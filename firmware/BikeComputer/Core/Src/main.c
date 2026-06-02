@@ -21,7 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "bike_data.h"
 #include "ili9341.h"
+#include "mpu6050.h"
+#include "ui.h"
 
 /* USER CODE END Includes */
 
@@ -63,31 +66,7 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static void BikeDashboard_DrawCentered(uint16_t y, const char *text, uint8_t size, uint16_t color)
-{
-  uint16_t length = 0U;
-  uint16_t text_width;
-  uint16_t x;
-
-  while (text[length] != '\0')
-  {
-    length++;
-  }
-
-  text_width = (uint16_t)(length * 6U * size);
-  x = (text_width >= ILI9341_WIDTH) ? 0U : (uint16_t)((ILI9341_WIDTH - text_width) / 2U);
-
-  ILI9341_DrawString(x, y, text, color, ILI9341_COLOR_BLACK, size);
-}
-
-static void BikeDashboard_Draw(void)
-{
-  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-  BikeDashboard_DrawCentered(28U, "35.6 km/h", 4U, ILI9341_COLOR_WHITE);
-  BikeDashboard_DrawCentered(110U, "250 W", 3U, ILI9341_COLOR_YELLOW);
-  BikeDashboard_DrawCentered(170U, "92 rpm", 3U, ILI9341_COLOR_CYAN);
-  BikeDashboard_DrawCentered(230U, "158 bpm", 3U, ILI9341_COLOR_RED);
-}
+static uint8_t current_page_index = 2U;
 
 /* USER CODE END 0 */
 
@@ -124,8 +103,10 @@ int main(void)
   MX_SPI1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  BikeData_InitDemo();
   ILI9341_Init();
-  BikeDashboard_Draw();
+  (void)MPU6050_Init();
+  RenderPage(&DemoPages[current_page_index]);
 
   /* USER CODE END 2 */
 
@@ -135,16 +116,10 @@ int main(void)
   {
     /* USER CODE END WHILE */
 	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-	  HAL_Delay(500);
+	  HAL_Delay(100);
     /* USER CODE BEGIN 3 */
-    static uint8_t refresh_divider = 0U;
-
-    refresh_divider++;
-    if (refresh_divider >= 2U)
-    {
-      refresh_divider = 0U;
-      BikeDashboard_Draw();
-    }
+    (void)MPU6050_UpdateBikeData();
+    RenderPage(&DemoPages[current_page_index]);
   }
   /* USER CODE END 3 */
 }
