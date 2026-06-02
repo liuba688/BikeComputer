@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "ili9341.h"
 
 /* USER CODE END Includes */
 
@@ -98,6 +99,8 @@ int main(void)
   MX_SPI1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  ILI9341_Init();
+  ILI9341_FillScreen(ILI9341_COLOR_RED);
 
   /* USER CODE END 2 */
 
