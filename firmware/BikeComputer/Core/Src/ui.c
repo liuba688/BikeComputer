@@ -11,6 +11,20 @@
 static const Page_t *current_rendered_page = 0;
 static char last_widget_values[UI_MAX_WIDGETS][UI_VALUE_TEXT_MAX];
 static uint8_t last_widget_values_valid[UI_MAX_WIDGETS];
+static uint8_t current_page_index = 0U;
+static UI_Mode_t ui_mode = PAGE_MODE;
+static uint8_t menu_cursor = 0U;
+static uint8_t menu_dirty = 1U;
+static uint8_t system_info_visible = 0U;
+
+static const char *menu_items[] = {
+  "Start",
+  "Sensors",
+  "Display",
+  "System"
+};
+
+#define UI_MENU_ITEM_COUNT  ((uint8_t)(sizeof(menu_items) / sizeof(menu_items[0])))
 
 static void UI_AppendChar(char *buffer, uint8_t buffer_size, uint8_t *index, char value)
 {
@@ -343,4 +357,162 @@ void RenderPage(const Page_t *page)
   {
     UI_RenderWidgetValue(&page->widgets[i], i, page_changed);
   }
+}
+
+void UI_RenderCurrentPage(void)
+{
+  if (ui_mode == MENU_MODE)
+  {
+    if (menu_dirty == 0U)
+    {
+      return;
+    }
+
+    ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+    ILI9341_DrawString(72U, 18U, "Menu", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 3U);
+
+    for (uint8_t i = 0U; i < UI_MENU_ITEM_COUNT; i++)
+    {
+      uint16_t y = (uint16_t)(88U + (i * 52U));
+      uint16_t color = (i == menu_cursor) ? ILI9341_COLOR_YELLOW : ILI9341_COLOR_WHITE;
+
+      ILI9341_DrawString(34U, y, (i == menu_cursor) ? ">" : " ", color, ILI9341_COLOR_BLACK, 2U);
+      ILI9341_DrawString(64U, y, menu_items[i], color, ILI9341_COLOR_BLACK, 2U);
+    }
+
+    if (system_info_visible != 0U)
+    {
+      ILI9341_DrawString(24U, 262U, "BikeComputer v1.0", ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 2U);
+    }
+
+    menu_dirty = 0U;
+    return;
+  }
+
+  if (DemoPageCount == 0U)
+  {
+    return;
+  }
+
+  if (current_page_index >= DemoPageCount)
+  {
+    current_page_index = 0U;
+  }
+
+  RenderPage(&DemoPages[current_page_index]);
+}
+
+void UI_NextPage(void)
+{
+  if (DemoPageCount == 0U)
+  {
+    return;
+  }
+
+  current_page_index++;
+  if (current_page_index >= DemoPageCount)
+  {
+    current_page_index = 0U;
+  }
+
+  UI_ForceRedraw();
+}
+
+void UI_PreviousPage(void)
+{
+  if (DemoPageCount == 0U)
+  {
+    return;
+  }
+
+  if (current_page_index == 0U)
+  {
+    current_page_index = (uint8_t)(DemoPageCount - 1U);
+  }
+  else
+  {
+    current_page_index--;
+  }
+
+  UI_ForceRedraw();
+}
+
+UI_Mode_t UI_GetMode(void)
+{
+  return ui_mode;
+}
+
+void UI_EnterMenu(void)
+{
+  ui_mode = MENU_MODE;
+  menu_cursor = 0U;
+  system_info_visible = 0U;
+  menu_dirty = 1U;
+}
+
+void UI_MenuNext(void)
+{
+  if (ui_mode != MENU_MODE)
+  {
+    return;
+  }
+
+  system_info_visible = 0U;
+  menu_cursor++;
+  if (menu_cursor >= UI_MENU_ITEM_COUNT)
+  {
+    menu_cursor = 0U;
+  }
+
+  menu_dirty = 1U;
+}
+
+void UI_MenuPrev(void)
+{
+  if (ui_mode != MENU_MODE)
+  {
+    return;
+  }
+
+  system_info_visible = 0U;
+  if (menu_cursor == 0U)
+  {
+    menu_cursor = (uint8_t)(UI_MENU_ITEM_COUNT - 1U);
+  }
+  else
+  {
+    menu_cursor--;
+  }
+
+  menu_dirty = 1U;
+}
+
+void UI_MenuSelect(void)
+{
+  if (ui_mode != MENU_MODE)
+  {
+    return;
+  }
+
+  if (menu_cursor == 0U)
+  {
+    ui_mode = PAGE_MODE;
+    system_info_visible = 0U;
+    UI_ForceRedraw();
+    return;
+  }
+
+  if (menu_cursor == 3U)
+  {
+    system_info_visible = 1U;
+  }
+
+  menu_dirty = 1U;
+}
+
+void UI_ForceRedraw(void)
+{
+  current_rendered_page = 0;
+  UI_ClearValueCache();
+  menu_dirty = 1U;
 }
