@@ -214,28 +214,23 @@ HAL_StatusTypeDef MPU6050_UpdateBikeData(void)
     return status;
   }
 
-  status = MPU6050_ReadRawGyro(&gyro);
-  if (status != HAL_OK)
-  {
-    return status;
-  }
-
-  status = MPU6050_ReadTemperature(&temperature_c);
-  if (status != HAL_OK)
-  {
-    return status;
-  }
-
   accelX_g = (float)accel.x / MPU6050_ACCEL_SCALE;
   accelY_g = (float)accel.y / MPU6050_ACCEL_SCALE;
   accelZ_g = (float)accel.z / MPU6050_ACCEL_SCALE;
   yz_magnitude = MPU6050_SqrtApprox((accelY_g * accelY_g) + (accelZ_g * accelZ_g));
 
-  (void)gyro;
-
   BikeData.pitch = MPU6050_Atan2Approx(-accelX_g, yz_magnitude) * MPU6050_RAD_TO_DEG;
   BikeData.roll = MPU6050_Atan2Approx(accelY_g, accelZ_g) * MPU6050_RAD_TO_DEG;
-  BikeData.temperature = temperature_c;
 
-  return HAL_OK;
+  if (MPU6050_ReadRawGyro(&gyro) == HAL_OK)
+  {
+    (void)gyro;
+  }
+
+  if (MPU6050_ReadTemperature(&temperature_c) == HAL_OK)
+  {
+    BikeData.temperature = temperature_c;
+  }
+
+  return status;
 }

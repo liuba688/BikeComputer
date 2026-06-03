@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "bike_data.h"
+#include "button.h"
 #include "ili9341.h"
 #include "mpu6050.h"
 #include "ui.h"
@@ -66,7 +67,6 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static uint8_t current_page_index = 2U;
 
 /* USER CODE END 0 */
 
@@ -106,7 +106,8 @@ int main(void)
   BikeData_InitDemo();
   ILI9341_Init();
   (void)MPU6050_Init();
-  RenderPage(&DemoPages[current_page_index]);
+  UI_ForceRedraw();
+  UI_RenderCurrentPage();
 
   /* USER CODE END 2 */
 
@@ -118,8 +119,45 @@ int main(void)
 	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
 	  HAL_Delay(100);
     /* USER CODE BEGIN 3 */
+    Button_Update();
+
+    if (UI_GetMode() == PAGE_MODE)
+    {
+      if (Button_WasPressed(BUTTON_NEXT) != 0U)
+      {
+        UI_NextPage();
+      }
+
+      if (Button_WasPressed(BUTTON_PREV) != 0U)
+      {
+        UI_PreviousPage();
+      }
+
+      if (Button_WasLongPressed(BUTTON_ENTER, 1000U) != 0U)
+      {
+        UI_EnterMenu();
+      }
+    }
+    else
+    {
+      if (Button_WasPressed(BUTTON_NEXT) != 0U)
+      {
+        UI_MenuNext();
+      }
+
+      if (Button_WasPressed(BUTTON_PREV) != 0U)
+      {
+        UI_MenuPrev();
+      }
+
+      if (Button_WasPressed(BUTTON_ENTER) != 0U)
+      {
+        UI_MenuSelect();
+      }
+    }
+
     (void)MPU6050_UpdateBikeData();
-    RenderPage(&DemoPages[current_page_index]);
+    UI_RenderCurrentPage();
   }
   /* USER CODE END 3 */
 }
@@ -313,11 +351,22 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
+  GPIO_InitStruct.Pin = BTN_NEXT_Pin|BTN_PREV_Pin|BTN_ENTER_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+  Button_EXTI_Callback(GPIO_Pin);
+}
 
 /* USER CODE END 4 */
 
