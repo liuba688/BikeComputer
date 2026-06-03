@@ -37,22 +37,7 @@ typedef struct
   uint8_t widget_count;
 } Page_t;
 
-typedef enum
-{
-  PAGE_MODE = 0,
-  MENU_MODE
-} UI_Mode_t;
-
 void RenderPage(const Page_t *page);
-void UI_RenderCurrentPage(void);
-UI_Mode_t UI_GetMode(void);
-void UI_NextPage(void);
-void UI_PreviousPage(void);
-void UI_EnterMenu(void);
-void UI_MenuNext(void);
-void UI_MenuPrev(void);
-void UI_MenuSelect(void);
-void UI_ForceRedraw(void);
 
 extern const Page_t DemoPages[];
 extern const uint8_t DemoPageCount;

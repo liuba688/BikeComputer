@@ -22,7 +22,6 @@
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "button.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -200,11 +199,5 @@ void SysTick_Handler(void)
 /******************************************************************************/
 
 /* USER CODE BEGIN 1 */
-void EXTI15_10_IRQHandler(void)
-{
-  HAL_GPIO_EXTI_IRQHandler(BTN_NEXT_Pin);
-  HAL_GPIO_EXTI_IRQHandler(BTN_PREV_Pin);
-  HAL_GPIO_EXTI_IRQHandler(BTN_ENTER_Pin);
-}
 
 /* USER CODE END 1 */
