@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "bike_data.h"
+#include "bmp280.h"
 #include "button.h"
 #include "ili9341.h"
 #include "mpu6050.h"
@@ -105,7 +106,9 @@ int main(void)
   /* USER CODE BEGIN 2 */
   BikeData_InitDemo();
   ILI9341_Init();
+  ILI9341_FillScreen(ILI9341_COLOR_BLACK);
   (void)MPU6050_Init();
+  (void)BMP280_Init();
   UI_ForceRedraw();
   UI_RenderCurrentPage();
 
@@ -157,6 +160,7 @@ int main(void)
     }
 
     (void)MPU6050_UpdateBikeData();
+    (void)BMP280_UpdateBikeData();
     UI_RenderCurrentPage();
   }
   /* USER CODE END 3 */

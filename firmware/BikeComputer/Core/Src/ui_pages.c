@@ -8,10 +8,9 @@ static const Widget_t DemoPage1Widgets[] = {
 };
 
 static const Widget_t DemoPage2Widgets[] = {
-  {0U,  18U, 240U, 66U, FIELD_ALTITUDE},
-  {0U,  92U, 240U, 66U, FIELD_DISTANCE},
-  {0U, 166U, 240U, 66U, FIELD_TEMPERATURE},
-  {0U, 240U, 240U, 58U, FIELD_BATTERY}
+  {0U,  30U, 240U, 78U, FIELD_AMBIENT_TEMP},
+  {0U, 122U, 240U, 78U, FIELD_PRESSURE},
+  {0U, 214U, 240U, 72U, FIELD_ALTITUDE}
 };
 
 static const Widget_t DemoPage3Widgets[] = {

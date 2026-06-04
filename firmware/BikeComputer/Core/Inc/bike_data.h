@@ -15,7 +15,9 @@ typedef struct
   uint16_t heartRate;
   float altitude;
   float distance;
-  float temperature;
+  float imuTemperature;
+  float ambientTemperature;
+  float pressure;
   float pitch;
   float roll;
   uint8_t battery;

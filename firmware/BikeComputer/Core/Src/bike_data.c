@@ -10,7 +10,9 @@ void BikeData_InitDemo(void)
   BikeData.heartRate = 158U;
   BikeData.altitude = 123.4f;
   BikeData.distance = 15.2f;
-  BikeData.temperature = 25.0f;
+  BikeData.imuTemperature = 25.0f;
+  BikeData.ambientTemperature = 25.0f;
+  BikeData.pressure = 1008.2f;
   BikeData.pitch = 0.0f;
   BikeData.roll = 0.0f;
   BikeData.battery = 95U;

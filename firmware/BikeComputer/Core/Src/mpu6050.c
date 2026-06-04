@@ -229,7 +229,7 @@ HAL_StatusTypeDef MPU6050_UpdateBikeData(void)
 
   if (MPU6050_ReadTemperature(&temperature_c) == HAL_OK)
   {
-    BikeData.temperature = temperature_c;
+    BikeData.imuTemperature = temperature_c;
   }
 
   return status;

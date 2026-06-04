@@ -124,8 +124,16 @@ static void UI_GetFieldText(FieldType_t field, char *buffer, uint8_t buffer_size
       UI_AppendText(buffer, buffer_size, &index, " km");
       break;
     case FIELD_TEMPERATURE:
-      UI_AppendFloat1(buffer, buffer_size, &index, BikeData.temperature);
+      UI_AppendFloat1(buffer, buffer_size, &index, BikeData.imuTemperature);
       UI_AppendText(buffer, buffer_size, &index, " C");
+      break;
+    case FIELD_AMBIENT_TEMP:
+      UI_AppendFloat1(buffer, buffer_size, &index, BikeData.ambientTemperature);
+      UI_AppendText(buffer, buffer_size, &index, " C");
+      break;
+    case FIELD_PRESSURE:
+      UI_AppendFloat1(buffer, buffer_size, &index, BikeData.pressure);
+      UI_AppendText(buffer, buffer_size, &index, " hPa");
       break;
     case FIELD_PITCH:
       UI_AppendFloat1(buffer, buffer_size, &index, BikeData.pitch);
@@ -162,7 +170,11 @@ static const char *UI_GetFieldLabel(FieldType_t field)
     case FIELD_DISTANCE:
       return "Distance";
     case FIELD_TEMPERATURE:
+      return "IMU Temp";
+    case FIELD_AMBIENT_TEMP:
       return "Temperature";
+    case FIELD_PRESSURE:
+      return "Pressure";
     case FIELD_PITCH:
       return "Pitch";
     case FIELD_ROLL:
@@ -189,7 +201,10 @@ static uint16_t UI_GetFieldColor(FieldType_t field)
     case FIELD_DISTANCE:
       return ILI9341_COLOR_ORANGE;
     case FIELD_TEMPERATURE:
+    case FIELD_AMBIENT_TEMP:
       return ILI9341_COLOR_MAGENTA;
+    case FIELD_PRESSURE:
+      return ILI9341_COLOR_YELLOW;
     case FIELD_PITCH:
       return ILI9341_COLOR_BLUE;
     case FIELD_ROLL:
