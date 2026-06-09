@@ -2,9 +2,15 @@
 #include "ili9341.h"
 #include "bike_data.h"
 #include "gps.h"
+#include "ui_font.h"
 
 #define UI_FONT_WIDTH_WITH_SPACING  6U
 #define UI_FONT_HEIGHT              7U
+#define UI_LABEL_FONT_SIZE          1U
+#define UI_UNIT_FONT_SIZE           1U
+#define UI_VALUE_FONT_MEDIUM        2U
+#define UI_VALUE_FONT_LARGE         3U
+#define UI_VALUE_FONT_EXTRA_LARGE   4U
 #define UI_MAX_WIDGETS              8U
 #define UI_VALUE_TEXT_MAX           128U
 #define UI_LABEL_HEIGHT             14U
@@ -388,25 +394,137 @@ static uint8_t UI_GetFontSize(const Widget_t *widget)
 {
   if (widget->height >= 120U)
   {
-    return 7U;
+    return 6U;
   }
 
   if (widget->height >= 92U)
   {
-    return 5U;
+    return UI_VALUE_FONT_EXTRA_LARGE;
   }
 
   if (widget->height >= 70U)
   {
-    return 4U;
+    return UI_VALUE_FONT_LARGE;
   }
 
   if (widget->height >= 48U)
   {
+    return UI_VALUE_FONT_LARGE;
+  }
+
+  return UI_VALUE_FONT_MEDIUM;
+}
+
+static uint8_t UI_FieldUsesExtraLargeNumeric(FieldType_t field)
+{
+  return ((field == FIELD_SPEED) ||
+          (field == FIELD_POWER) ||
+          (field == FIELD_HEARTRATE)) ? 1U : 0U;
+}
+
+static uint8_t UI_FieldUsesNumericFont(FieldType_t field)
+{
+  switch (field)
+  {
+    case FIELD_SPEED:
+    case FIELD_POWER:
+    case FIELD_HEARTRATE:
+    case FIELD_CADENCE:
+    case FIELD_ALTITUDE:
+    case FIELD_DISTANCE:
+    case FIELD_MAX_SPEED:
+    case FIELD_RIDE_TIME:
+    case FIELD_TEMPERATURE:
+    case FIELD_AMBIENT_TEMP:
+    case FIELD_PRESSURE:
+    case FIELD_PITCH:
+    case FIELD_ROLL:
+    case FIELD_BATTERY:
+    case FIELD_GPS_SATELLITES:
+    case FIELD_GPS_SPEED:
+    case FIELD_GPS_LATITUDE:
+    case FIELD_GPS_LONGITUDE:
+    case FIELD_GPS_ALTITUDE:
+    case FIELD_GPS_UTC:
+      return 1U;
+    default:
+      return 0U;
+  }
+}
+
+static const Font_t *UI_GetTextValueFont(uint16_t width, uint16_t height, const char *text)
+{
+  uint16_t text_width;
+  uint16_t text_height;
+
+  if (UIFont_FontCanDraw(&UIFont_MediumNumericAA, text) != 0U)
+  {
+    text_width = UIFont_GetStringWidthAA(&UIFont_MediumNumericAA, text);
+    text_height = UIFont_GetStringHeightAA(&UIFont_MediumNumericAA);
+
+    if ((text_width <= width) && (text_height <= height))
+    {
+      return &UIFont_MediumNumericAA;
+    }
+  }
+
+  if (UIFont_FontCanDraw(&UIFont_SmallNumericAA, text) != 0U)
+  {
+    text_width = UIFont_GetStringWidthAA(&UIFont_SmallNumericAA, text);
+    text_height = UIFont_GetStringHeightAA(&UIFont_SmallNumericAA);
+
+    if ((text_width <= width) && (text_height <= height))
+    {
+      return &UIFont_SmallNumericAA;
+    }
+  }
+
+  if (UIFont_FontCanDraw(&UIFont_LabelAA, text) != 0U)
+  {
+    return &UIFont_LabelAA;
+  }
+
+  return 0;
+}
+
+static uint8_t UI_GetNumericFontScale(const Widget_t *widget)
+{
+  if (UI_FieldUsesExtraLargeNumeric(widget->field) != 0U)
+  {
+    if (widget->height >= 120U)
+    {
+      return 6U;
+    }
+
+    if (widget->height >= 92U)
+    {
+      return 4U;
+    }
+
+    if (widget->height >= 70U)
+    {
+      return 3U;
+    }
+
+    return 2U;
+  }
+
+  if (widget->height >= 92U)
+  {
     return 3U;
   }
 
-  return 2U;
+  if (widget->height >= 64U)
+  {
+    return 3U;
+  }
+
+  if (widget->height >= 48U)
+  {
+    return 2U;
+  }
+
+  return 1U;
 }
 
 static uint16_t UI_StringLength(const char *text)
@@ -492,6 +610,23 @@ static uint16_t UI_GetCenteredTextX(uint16_t x, uint16_t width, const char *text
   return (uint16_t)(x + ((width - text_width) / 2U));
 }
 
+static uint16_t UI_GetCenteredTextXAA(uint16_t x, uint16_t width, const Font_t *font, const char *text, uint8_t fallback_font_size)
+{
+  uint16_t text_width = UIFont_GetStringWidthAA(font, text);
+
+  if (text_width == 0U)
+  {
+    return UI_GetCenteredTextX(x, width, text, fallback_font_size);
+  }
+
+  if (width <= text_width)
+  {
+    return x;
+  }
+
+  return (uint16_t)(x + ((width - text_width) / 2U));
+}
+
 static void UI_DrawWrappedText(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const char *text, uint16_t color, uint16_t background, uint8_t font_size)
 {
   uint16_t char_width = (uint16_t)(UI_FONT_WIDTH_WITH_SPACING * font_size);
@@ -555,13 +690,13 @@ static void UI_RenderWidgetLabel(const Widget_t *widget)
   UI_CopyUpperString(label, UI_GetFieldLabel(widget->field), sizeof(label));
   ILI9341_FillRectangle(card_x, card_y, card_width, card_height, background);
   UI_DrawWidgetSeparators(widget, card_x, card_y, card_width, card_height);
-  ILI9341_DrawString(label_x, (uint16_t)(card_y + UI_CARD_PADDING), label, label_color, background, 1U);
+  UIFont_DrawBoldString(label_x, (uint16_t)(card_y + UI_CARD_PADDING), label, label_color, background, UI_LABEL_FONT_SIZE);
 
   UI_GetFieldUnit(widget->field, unit, sizeof(unit));
   if (unit[0] != '\0')
   {
-    unit_x = UI_GetCenteredTextX(card_x, card_width, unit, 1U);
-    ILI9341_DrawString(unit_x, (uint16_t)(card_y + card_height - 15U), unit, label_color, background, 1U);
+    unit_x = UI_GetCenteredTextXAA(card_x, card_width, &UIFont_LabelAA, unit, UI_UNIT_FONT_SIZE);
+    UIFont_DrawBoldString(unit_x, (uint16_t)(card_y + card_height - 15U), unit, label_color, background, UI_UNIT_FONT_SIZE);
   }
 }
 
@@ -569,13 +704,18 @@ static void UI_RenderWidgetValue(const Widget_t *widget, uint8_t widget_index, u
 {
   char text[UI_VALUE_TEXT_MAX];
   uint8_t font_size = UI_GetFontSize(widget);
+  uint8_t numeric_scale = UI_GetNumericFontScale(widget);
+  uint8_t use_numeric_font = 0U;
+  const Font_t *text_value_font = 0;
   uint16_t card_x = (uint16_t)(widget->x + UI_CARD_MARGIN);
   uint16_t card_y = (uint16_t)(widget->y + UI_CARD_MARGIN);
   uint16_t card_width = (widget->width > (UI_CARD_MARGIN * 2U)) ? (uint16_t)(widget->width - (UI_CARD_MARGIN * 2U)) : widget->width;
   uint16_t card_height = (widget->height > (UI_CARD_MARGIN * 2U)) ? (uint16_t)(widget->height - (UI_CARD_MARGIN * 2U)) : widget->height;
   uint16_t value_y = (uint16_t)(card_y + UI_LABEL_HEIGHT + UI_CARD_PADDING);
   uint16_t value_height = (card_height > 38U) ? (uint16_t)(card_height - 38U) : card_height;
+  uint16_t value_width = (card_width > (UI_CARD_PADDING * 2U)) ? (uint16_t)(card_width - (UI_CARD_PADDING * 2U)) : card_width;
   uint16_t text_height = (uint16_t)(UI_FONT_HEIGHT * font_size);
+  uint16_t text_width;
   uint16_t text_x;
   uint16_t text_y = value_y;
   uint16_t background = UI_GetWidgetBackground(widget);
@@ -591,14 +731,46 @@ static void UI_RenderWidgetValue(const Widget_t *widget, uint8_t widget_index, u
     return;
   }
 
-  text_x = UI_GetCenteredTextX(card_x, card_width, text, font_size);
+  use_numeric_font = ((UI_FieldUsesNumericFont(widget->field) != 0U) &&
+                      (UIFont_IsNumericText(text) != 0U)) ? 1U : 0U;
 
-  while ((font_size > 1U) &&
-         ((uint16_t)(UI_StringLength(text) * UI_FONT_WIDTH_WITH_SPACING * font_size) > (uint16_t)(card_width - (UI_CARD_PADDING * 2U))))
+  if (use_numeric_font != 0U)
   {
-    font_size--;
-    text_height = (uint16_t)(UI_FONT_HEIGHT * font_size);
-    text_x = UI_GetCenteredTextX(card_x, card_width, text, font_size);
+    text_width = UIFont_GetNumericTextWidth(text, numeric_scale);
+    text_height = UIFont_GetNumericTextHeight(numeric_scale);
+
+    while ((numeric_scale > 1U) &&
+           ((text_width > value_width) || (text_height > value_height)))
+    {
+      numeric_scale--;
+      text_width = UIFont_GetNumericTextWidth(text, numeric_scale);
+      text_height = UIFont_GetNumericTextHeight(numeric_scale);
+    }
+
+    text_x = (card_width > text_width) ? (uint16_t)(card_x + ((card_width - text_width) / 2U)) : card_x;
+  }
+  else
+  {
+    text_value_font = UI_GetTextValueFont(value_width, value_height, text);
+
+    if (text_value_font != 0)
+    {
+      text_width = UIFont_GetStringWidthAA(text_value_font, text);
+      text_height = UIFont_GetStringHeightAA(text_value_font);
+      text_x = (card_width > text_width) ? (uint16_t)(card_x + ((card_width - text_width) / 2U)) : card_x;
+    }
+    else
+    {
+      text_x = UI_GetCenteredTextX(card_x, card_width, text, font_size);
+
+      while ((font_size > 1U) &&
+             ((uint16_t)(UI_StringLength(text) * UI_FONT_WIDTH_WITH_SPACING * font_size) > value_width))
+      {
+        font_size--;
+        text_height = (uint16_t)(UI_FONT_HEIGHT * font_size);
+        text_x = UI_GetCenteredTextX(card_x, card_width, text, font_size);
+      }
+    }
   }
 
   if (value_height > text_height)
@@ -618,6 +790,14 @@ static void UI_RenderWidgetValue(const Widget_t *widget, uint8_t widget_index, u
                        value_color,
                        background,
                        1U);
+  }
+  else if (use_numeric_font != 0U)
+  {
+    UIFont_DrawNumericString(text_x, text_y, text, value_color, background, numeric_scale);
+  }
+  else if (text_value_font != 0)
+  {
+    UIFont_DrawStringAA(text_x, text_y, text_value_font, text, value_color, background);
   }
   else
   {
