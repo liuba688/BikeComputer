@@ -15,14 +15,32 @@ typedef enum
   FIELD_CADENCE,
   FIELD_ALTITUDE,
   FIELD_DISTANCE,
+  FIELD_MAX_SPEED,
+  FIELD_RIDE_TIME,
   FIELD_TEMPERATURE,
   FIELD_AMBIENT_TEMP,
   FIELD_PRESSURE,
   FIELD_PITCH,
   FIELD_ROLL,
   FIELD_BATTERY,
+  FIELD_GPS_FIX,
+  FIELD_GPS_SATELLITES,
+  FIELD_GPS_SPEED,
+  FIELD_GPS_LATITUDE,
+  FIELD_GPS_LONGITUDE,
+  FIELD_GPS_ALTITUDE,
+  FIELD_GPS_UTC,
+  FIELD_GPS_RAW,
   FIELD_COUNT
 } FieldType_t;
+
+typedef struct
+{
+  uint16_t background_color;
+  uint16_t value_color;
+  uint16_t label_color;
+  uint16_t border_color;
+} WidgetStyle_t;
 
 typedef struct
 {
@@ -31,6 +49,7 @@ typedef struct
   uint16_t width;
   uint16_t height;
   FieldType_t field;
+  const WidgetStyle_t *style;
 } Widget_t;
 
 typedef struct

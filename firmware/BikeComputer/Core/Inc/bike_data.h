@@ -7,6 +7,8 @@ extern "C" {
 
 #include <stdint.h>
 
+#define BIKE_DATA_UTC_TIME_MAX  12U
+
 typedef struct
 {
   float speed;
@@ -15,11 +17,20 @@ typedef struct
   uint16_t heartRate;
   float altitude;
   float distance;
+  float maxSpeed;
+  uint32_t rideTime;
   float imuTemperature;
   float ambientTemperature;
   float pressure;
   float pitch;
   float roll;
+  uint8_t gpsFix;
+  float latitude;
+  float longitude;
+  float gpsSpeed;
+  float gpsAltitude;
+  uint8_t satelliteCount;
+  char utcTime[BIKE_DATA_UTC_TIME_MAX];
   uint8_t battery;
 } BikeData_t;
 

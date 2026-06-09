@@ -24,8 +24,10 @@
 #include "bike_data.h"
 #include "bmp280.h"
 #include "button.h"
+#include "gps.h"
 #include "ili9341.h"
 #include "mpu6050.h"
+#include "ride_stats.h"
 #include "ui.h"
 
 /* USER CODE END Includes */
@@ -109,6 +111,8 @@ int main(void)
   ILI9341_FillScreen(ILI9341_COLOR_BLACK);
   (void)MPU6050_Init();
   (void)BMP280_Init();
+  GPS_Init();
+  RideStats_Init();
   UI_ForceRedraw();
   UI_RenderCurrentPage();
 
@@ -119,8 +123,7 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
-	  HAL_Delay(100);
+
     /* USER CODE BEGIN 3 */
     Button_Update();
 
@@ -161,6 +164,8 @@ int main(void)
 
     (void)MPU6050_UpdateBikeData();
     (void)BMP280_UpdateBikeData();
+    GPS_Update();
+    RideStats_Update();
     UI_RenderCurrentPage();
   }
   /* USER CODE END 3 */
@@ -300,7 +305,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 9600;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;

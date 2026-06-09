@@ -1,17 +1,26 @@
 #include "ui.h"
 #include "ili9341.h"
 #include "bike_data.h"
+#include "gps.h"
 
 #define UI_FONT_WIDTH_WITH_SPACING  6U
 #define UI_FONT_HEIGHT              7U
 #define UI_MAX_WIDGETS              8U
-#define UI_VALUE_TEXT_MAX           24U
+#define UI_VALUE_TEXT_MAX           128U
 #define UI_LABEL_HEIGHT             14U
+#define UI_SCREEN_BACKGROUND        ILI9341_COLOR_WHITE
+#define UI_WIDGET_BACKGROUND        ILI9341_COLOR_WHITE
+#define UI_TEXT_COLOR               ILI9341_COLOR_BLACK
+#define UI_BORDER_COLOR             ILI9341_RGB565(190U, 196U, 202U)
+#define UI_SELECTED_BACKGROUND      ILI9341_COLOR_BLACK
+#define UI_SELECTED_TEXT            ILI9341_COLOR_WHITE
+#define UI_CARD_MARGIN              0U
+#define UI_CARD_PADDING             6U
 
 static const Page_t *current_rendered_page = 0;
 static char last_widget_values[UI_MAX_WIDGETS][UI_VALUE_TEXT_MAX];
 static uint8_t last_widget_values_valid[UI_MAX_WIDGETS];
-static uint8_t current_page_index = 2U;
+static uint8_t current_page_index = 0U;
 static UI_Mode_t ui_mode = PAGE_MODE;
 static uint8_t menu_cursor = 0U;
 static uint8_t menu_dirty = 1U;
@@ -86,7 +95,111 @@ static void UI_AppendFloat1(char *buffer, uint8_t buffer_size, uint8_t *index, f
   UI_AppendUnsigned(buffer, buffer_size, index, scaled % 10U);
 }
 
-static void UI_GetFieldText(FieldType_t field, char *buffer, uint8_t buffer_size)
+static void UI_AppendFloat5(char *buffer, uint8_t buffer_size, uint8_t *index, float value)
+{
+  uint32_t scaled;
+  uint32_t fraction;
+  uint32_t divisor = 10000U;
+
+  if (value < 0.0f)
+  {
+    UI_AppendChar(buffer, buffer_size, index, '-');
+    value = -value;
+  }
+
+  scaled = (uint32_t)((value * 100000.0f) + 0.5f);
+  UI_AppendUnsigned(buffer, buffer_size, index, scaled / 100000U);
+  UI_AppendChar(buffer, buffer_size, index, '.');
+  fraction = scaled % 100000U;
+
+  while ((divisor > 1U) && (fraction < divisor))
+  {
+    UI_AppendChar(buffer, buffer_size, index, '0');
+    divisor /= 10U;
+  }
+
+  UI_AppendUnsigned(buffer, buffer_size, index, fraction);
+}
+
+static void UI_AppendTwoDigits(char *buffer, uint8_t buffer_size, uint8_t *index, uint32_t value)
+{
+  UI_AppendChar(buffer, buffer_size, index, (char)('0' + ((value / 10U) % 10U)));
+  UI_AppendChar(buffer, buffer_size, index, (char)('0' + (value % 10U)));
+}
+
+static void UI_AppendRideTime(char *buffer, uint8_t buffer_size, uint8_t *index, uint32_t seconds)
+{
+  uint32_t hours = seconds / 3600U;
+  uint32_t minutes = (seconds / 60U) % 60U;
+  uint32_t remaining_seconds = seconds % 60U;
+
+  UI_AppendUnsigned(buffer, buffer_size, index, hours);
+  UI_AppendChar(buffer, buffer_size, index, ':');
+  UI_AppendTwoDigits(buffer, buffer_size, index, minutes);
+  UI_AppendChar(buffer, buffer_size, index, ':');
+  UI_AppendTwoDigits(buffer, buffer_size, index, remaining_seconds);
+}
+
+static void UI_GetFieldUnit(FieldType_t field, char *buffer, uint8_t buffer_size)
+{
+  uint8_t index = 0U;
+
+  if (buffer_size == 0U)
+  {
+    return;
+  }
+
+  buffer[0] = '\0';
+
+  switch (field)
+  {
+    case FIELD_SPEED:
+      UI_AppendText(buffer, buffer_size, &index, "km/h");
+      break;
+    case FIELD_POWER:
+      UI_AppendText(buffer, buffer_size, &index, "W");
+      break;
+    case FIELD_HEARTRATE:
+      UI_AppendText(buffer, buffer_size, &index, "bpm");
+      break;
+    case FIELD_CADENCE:
+      UI_AppendText(buffer, buffer_size, &index, "rpm");
+      break;
+    case FIELD_ALTITUDE:
+      UI_AppendText(buffer, buffer_size, &index, "m");
+      break;
+    case FIELD_DISTANCE:
+      UI_AppendText(buffer, buffer_size, &index, "km");
+      break;
+    case FIELD_MAX_SPEED:
+      UI_AppendText(buffer, buffer_size, &index, "km/h");
+      break;
+    case FIELD_RIDE_TIME:
+      break;
+    case FIELD_TEMPERATURE:
+    case FIELD_AMBIENT_TEMP:
+      UI_AppendText(buffer, buffer_size, &index, "C");
+      break;
+    case FIELD_PRESSURE:
+      UI_AppendText(buffer, buffer_size, &index, "hPa");
+      break;
+    case FIELD_BATTERY:
+      UI_AppendText(buffer, buffer_size, &index, "%");
+      break;
+    case FIELD_GPS_SPEED:
+      UI_AppendText(buffer, buffer_size, &index, "km/h");
+      break;
+    case FIELD_GPS_ALTITUDE:
+      UI_AppendText(buffer, buffer_size, &index, "m");
+      break;
+    case FIELD_GPS_RAW:
+      break;
+    default:
+      break;
+  }
+}
+
+static void UI_GetFieldValue(FieldType_t field, char *buffer, uint8_t buffer_size)
 {
   uint8_t index = 0U;
 
@@ -101,51 +214,73 @@ static void UI_GetFieldText(FieldType_t field, char *buffer, uint8_t buffer_size
   {
     case FIELD_SPEED:
       UI_AppendFloat1(buffer, buffer_size, &index, BikeData.speed);
-      UI_AppendText(buffer, buffer_size, &index, " km/h");
       break;
     case FIELD_POWER:
       UI_AppendUnsigned(buffer, buffer_size, &index, BikeData.power);
-      UI_AppendText(buffer, buffer_size, &index, " W");
       break;
     case FIELD_HEARTRATE:
       UI_AppendUnsigned(buffer, buffer_size, &index, BikeData.heartRate);
-      UI_AppendText(buffer, buffer_size, &index, " bpm");
       break;
     case FIELD_CADENCE:
       UI_AppendUnsigned(buffer, buffer_size, &index, BikeData.cadence);
-      UI_AppendText(buffer, buffer_size, &index, " rpm");
       break;
     case FIELD_ALTITUDE:
       UI_AppendFloat1(buffer, buffer_size, &index, BikeData.altitude);
-      UI_AppendText(buffer, buffer_size, &index, " m");
       break;
     case FIELD_DISTANCE:
       UI_AppendFloat1(buffer, buffer_size, &index, BikeData.distance);
-      UI_AppendText(buffer, buffer_size, &index, " km");
+      break;
+    case FIELD_MAX_SPEED:
+      UI_AppendFloat1(buffer, buffer_size, &index, BikeData.maxSpeed);
+      break;
+    case FIELD_RIDE_TIME:
+      UI_AppendRideTime(buffer, buffer_size, &index, BikeData.rideTime);
       break;
     case FIELD_TEMPERATURE:
       UI_AppendFloat1(buffer, buffer_size, &index, BikeData.imuTemperature);
-      UI_AppendText(buffer, buffer_size, &index, " C");
       break;
     case FIELD_AMBIENT_TEMP:
       UI_AppendFloat1(buffer, buffer_size, &index, BikeData.ambientTemperature);
-      UI_AppendText(buffer, buffer_size, &index, " C");
       break;
     case FIELD_PRESSURE:
       UI_AppendFloat1(buffer, buffer_size, &index, BikeData.pressure);
-      UI_AppendText(buffer, buffer_size, &index, " hPa");
       break;
     case FIELD_PITCH:
       UI_AppendFloat1(buffer, buffer_size, &index, BikeData.pitch);
-      UI_AppendText(buffer, buffer_size, &index, " pitch");
       break;
     case FIELD_ROLL:
       UI_AppendFloat1(buffer, buffer_size, &index, BikeData.roll);
-      UI_AppendText(buffer, buffer_size, &index, " roll");
       break;
     case FIELD_BATTERY:
       UI_AppendUnsigned(buffer, buffer_size, &index, BikeData.battery);
-      UI_AppendText(buffer, buffer_size, &index, "%");
+      break;
+    case FIELD_GPS_FIX:
+      UI_AppendText(buffer, buffer_size, &index, (BikeData.gpsFix != 0U) ? "YES" : "NO");
+      break;
+    case FIELD_GPS_SATELLITES:
+      UI_AppendUnsigned(buffer, buffer_size, &index, BikeData.satelliteCount);
+      break;
+    case FIELD_GPS_SPEED:
+      UI_AppendFloat1(buffer, buffer_size, &index, BikeData.gpsSpeed);
+      break;
+    case FIELD_GPS_LATITUDE:
+      UI_AppendFloat5(buffer, buffer_size, &index, BikeData.latitude);
+      break;
+    case FIELD_GPS_LONGITUDE:
+      UI_AppendFloat5(buffer, buffer_size, &index, BikeData.longitude);
+      break;
+    case FIELD_GPS_ALTITUDE:
+      UI_AppendFloat1(buffer, buffer_size, &index, BikeData.gpsAltitude);
+      break;
+    case FIELD_GPS_UTC:
+      UI_AppendText(buffer, buffer_size, &index, BikeData.utcTime);
+      break;
+    case FIELD_GPS_RAW:
+      GPS_GetLatestSentence(buffer, buffer_size);
+      if (buffer[0] == '\0')
+      {
+        UI_AppendText(buffer, buffer_size, &index, "Waiting for NMEA...");
+      }
       break;
     default:
       UI_AppendText(buffer, buffer_size, &index, "--");
@@ -169,6 +304,10 @@ static const char *UI_GetFieldLabel(FieldType_t field)
       return "Altitude";
     case FIELD_DISTANCE:
       return "Distance";
+    case FIELD_MAX_SPEED:
+      return "Max Speed";
+    case FIELD_RIDE_TIME:
+      return "Ride Time";
     case FIELD_TEMPERATURE:
       return "IMU Temp";
     case FIELD_AMBIENT_TEMP:
@@ -181,6 +320,22 @@ static const char *UI_GetFieldLabel(FieldType_t field)
       return "Roll";
     case FIELD_BATTERY:
       return "Battery";
+    case FIELD_GPS_FIX:
+      return "Fix";
+    case FIELD_GPS_SATELLITES:
+      return "Satellites";
+    case FIELD_GPS_SPEED:
+      return "GPS Speed";
+    case FIELD_GPS_LATITUDE:
+      return "Latitude";
+    case FIELD_GPS_LONGITUDE:
+      return "Longitude";
+    case FIELD_GPS_ALTITUDE:
+      return "GPS Altitude";
+    case FIELD_GPS_UTC:
+      return "UTC Time";
+    case FIELD_GPS_RAW:
+      return "GPS RAW";
     default:
       return "";
   }
@@ -188,42 +343,65 @@ static const char *UI_GetFieldLabel(FieldType_t field)
 
 static uint16_t UI_GetFieldColor(FieldType_t field)
 {
-  switch (field)
+  (void)field;
+  return UI_TEXT_COLOR;
+}
+
+static uint16_t UI_GetWidgetBackground(const Widget_t *widget)
+{
+  return (widget->style != 0) ? widget->style->background_color : UI_WIDGET_BACKGROUND;
+}
+
+static uint16_t UI_GetWidgetValueColor(const Widget_t *widget)
+{
+  return (widget->style != 0) ? widget->style->value_color : UI_GetFieldColor(widget->field);
+}
+
+static uint16_t UI_GetWidgetLabelColor(const Widget_t *widget)
+{
+  return (widget->style != 0) ? widget->style->label_color : UI_TEXT_COLOR;
+}
+
+static uint16_t UI_GetWidgetBorderColor(const Widget_t *widget)
+{
+  return (widget->style != 0) ? widget->style->border_color : UI_BORDER_COLOR;
+}
+
+static void UI_DrawWidgetSeparators(const Widget_t *widget, uint16_t card_x, uint16_t card_y, uint16_t card_width, uint16_t card_height)
+{
+  uint16_t right = (uint16_t)(card_x + card_width);
+  uint16_t bottom = (uint16_t)(card_y + card_height);
+  uint16_t separator_color = UI_GetWidgetBorderColor(widget);
+
+  if ((right > 0U) && (right < ILI9341_WIDTH))
   {
-    case FIELD_POWER:
-      return ILI9341_COLOR_YELLOW;
-    case FIELD_HEARTRATE:
-      return ILI9341_COLOR_RED;
-    case FIELD_CADENCE:
-      return ILI9341_COLOR_CYAN;
-    case FIELD_ALTITUDE:
-      return ILI9341_COLOR_GREEN;
-    case FIELD_DISTANCE:
-      return ILI9341_COLOR_ORANGE;
-    case FIELD_TEMPERATURE:
-    case FIELD_AMBIENT_TEMP:
-      return ILI9341_COLOR_MAGENTA;
-    case FIELD_PRESSURE:
-      return ILI9341_COLOR_YELLOW;
-    case FIELD_PITCH:
-      return ILI9341_COLOR_BLUE;
-    case FIELD_ROLL:
-      return ILI9341_COLOR_GRAY;
-    case FIELD_BATTERY:
-      return ILI9341_COLOR_GREEN;
-    default:
-      return ILI9341_COLOR_WHITE;
+    ILI9341_DrawLine((int16_t)(right - 1U), (int16_t)card_y, (int16_t)(right - 1U), (int16_t)(bottom - 1U), separator_color);
+  }
+
+  if ((bottom > 0U) && (bottom < ILI9341_HEIGHT))
+  {
+    ILI9341_DrawLine((int16_t)card_x, (int16_t)(bottom - 1U), (int16_t)(right - 1U), (int16_t)(bottom - 1U), separator_color);
   }
 }
 
 static uint8_t UI_GetFontSize(const Widget_t *widget)
 {
-  if (widget->height >= 80U)
+  if (widget->height >= 120U)
+  {
+    return 7U;
+  }
+
+  if (widget->height >= 92U)
+  {
+    return 5U;
+  }
+
+  if (widget->height >= 70U)
   {
     return 4U;
   }
 
-  if (widget->height >= 56U)
+  if (widget->height >= 48U)
   {
     return 3U;
   }
@@ -277,6 +455,31 @@ static void UI_CopyString(char *destination, const char *source, uint8_t destina
   destination[index] = '\0';
 }
 
+static void UI_CopyUpperString(char *destination, const char *source, uint8_t destination_size)
+{
+  uint8_t index = 0U;
+  char value;
+
+  if (destination_size == 0U)
+  {
+    return;
+  }
+
+  while ((source[index] != '\0') && (index < (uint8_t)(destination_size - 1U)))
+  {
+    value = source[index];
+    if ((value >= 'a') && (value <= 'z'))
+    {
+      value = (char)(value - ('a' - 'A'));
+    }
+
+    destination[index] = value;
+    index++;
+  }
+
+  destination[index] = '\0';
+}
+
 static uint16_t UI_GetCenteredTextX(uint16_t x, uint16_t width, const char *text, uint8_t font_size)
 {
   uint16_t text_width = (uint16_t)(UI_StringLength(text) * UI_FONT_WIDTH_WITH_SPACING * font_size);
@@ -287,6 +490,44 @@ static uint16_t UI_GetCenteredTextX(uint16_t x, uint16_t width, const char *text
   }
 
   return (uint16_t)(x + ((width - text_width) / 2U));
+}
+
+static void UI_DrawWrappedText(uint16_t x, uint16_t y, uint16_t width, uint16_t height, const char *text, uint16_t color, uint16_t background, uint8_t font_size)
+{
+  uint16_t char_width = (uint16_t)(UI_FONT_WIDTH_WITH_SPACING * font_size);
+  uint16_t char_height = (uint16_t)(UI_FONT_HEIGHT * font_size);
+  uint16_t max_columns;
+  uint16_t column = 0U;
+  uint16_t cursor_y = y;
+
+  if ((char_width == 0U) || (char_height == 0U) || (width < char_width))
+  {
+    return;
+  }
+
+  max_columns = width / char_width;
+
+  while ((*text != '\0') && ((uint16_t)(cursor_y + char_height) <= (uint16_t)(y + height)))
+  {
+    if ((*text == '\n') || (column >= max_columns))
+    {
+      column = 0U;
+      cursor_y = (uint16_t)(cursor_y + char_height + 2U);
+      if (*text == '\n')
+      {
+        text++;
+      }
+      continue;
+    }
+
+    if (*text != '\r')
+    {
+      ILI9341_DrawChar((uint16_t)(x + (column * char_width)), cursor_y, *text, color, background, font_size);
+      column++;
+    }
+
+    text++;
+  }
 }
 
 static void UI_ClearValueCache(void)
@@ -300,23 +541,47 @@ static void UI_ClearValueCache(void)
 
 static void UI_RenderWidgetLabel(const Widget_t *widget)
 {
-  const char *label = UI_GetFieldLabel(widget->field);
-  uint16_t label_x = UI_GetCenteredTextX(widget->x, widget->width, label, 1U);
+  char label[16];
+  char unit[8];
+  uint16_t card_x = (uint16_t)(widget->x + UI_CARD_MARGIN);
+  uint16_t card_y = (uint16_t)(widget->y + UI_CARD_MARGIN);
+  uint16_t card_width = (widget->width > (UI_CARD_MARGIN * 2U)) ? (uint16_t)(widget->width - (UI_CARD_MARGIN * 2U)) : widget->width;
+  uint16_t card_height = (widget->height > (UI_CARD_MARGIN * 2U)) ? (uint16_t)(widget->height - (UI_CARD_MARGIN * 2U)) : widget->height;
+  uint16_t label_x = (uint16_t)(card_x + UI_CARD_PADDING);
+  uint16_t unit_x;
+  uint16_t background = UI_GetWidgetBackground(widget);
+  uint16_t label_color = UI_GetWidgetLabelColor(widget);
 
-  ILI9341_DrawString(label_x, widget->y, label, ILI9341_COLOR_GRAY, ILI9341_COLOR_BLACK, 1U);
+  UI_CopyUpperString(label, UI_GetFieldLabel(widget->field), sizeof(label));
+  ILI9341_FillRectangle(card_x, card_y, card_width, card_height, background);
+  UI_DrawWidgetSeparators(widget, card_x, card_y, card_width, card_height);
+  ILI9341_DrawString(label_x, (uint16_t)(card_y + UI_CARD_PADDING), label, label_color, background, 1U);
+
+  UI_GetFieldUnit(widget->field, unit, sizeof(unit));
+  if (unit[0] != '\0')
+  {
+    unit_x = UI_GetCenteredTextX(card_x, card_width, unit, 1U);
+    ILI9341_DrawString(unit_x, (uint16_t)(card_y + card_height - 15U), unit, label_color, background, 1U);
+  }
 }
 
 static void UI_RenderWidgetValue(const Widget_t *widget, uint8_t widget_index, uint8_t force_redraw)
 {
-  char text[24];
+  char text[UI_VALUE_TEXT_MAX];
   uint8_t font_size = UI_GetFontSize(widget);
-  uint16_t value_y = (uint16_t)(widget->y + UI_LABEL_HEIGHT);
-  uint16_t value_height = (widget->height > UI_LABEL_HEIGHT) ? (uint16_t)(widget->height - UI_LABEL_HEIGHT) : widget->height;
+  uint16_t card_x = (uint16_t)(widget->x + UI_CARD_MARGIN);
+  uint16_t card_y = (uint16_t)(widget->y + UI_CARD_MARGIN);
+  uint16_t card_width = (widget->width > (UI_CARD_MARGIN * 2U)) ? (uint16_t)(widget->width - (UI_CARD_MARGIN * 2U)) : widget->width;
+  uint16_t card_height = (widget->height > (UI_CARD_MARGIN * 2U)) ? (uint16_t)(widget->height - (UI_CARD_MARGIN * 2U)) : widget->height;
+  uint16_t value_y = (uint16_t)(card_y + UI_LABEL_HEIGHT + UI_CARD_PADDING);
+  uint16_t value_height = (card_height > 38U) ? (uint16_t)(card_height - 38U) : card_height;
   uint16_t text_height = (uint16_t)(UI_FONT_HEIGHT * font_size);
   uint16_t text_x;
   uint16_t text_y = value_y;
+  uint16_t background = UI_GetWidgetBackground(widget);
+  uint16_t value_color = UI_GetWidgetValueColor(widget);
 
-  UI_GetFieldText(widget->field, text, sizeof(text));
+  UI_GetFieldValue(widget->field, text, sizeof(text));
 
   if ((force_redraw == 0U) &&
       (widget_index < UI_MAX_WIDGETS) &&
@@ -326,15 +591,38 @@ static void UI_RenderWidgetValue(const Widget_t *widget, uint8_t widget_index, u
     return;
   }
 
-  text_x = UI_GetCenteredTextX(widget->x, widget->width, text, font_size);
+  text_x = UI_GetCenteredTextX(card_x, card_width, text, font_size);
+
+  while ((font_size > 1U) &&
+         ((uint16_t)(UI_StringLength(text) * UI_FONT_WIDTH_WITH_SPACING * font_size) > (uint16_t)(card_width - (UI_CARD_PADDING * 2U))))
+  {
+    font_size--;
+    text_height = (uint16_t)(UI_FONT_HEIGHT * font_size);
+    text_x = UI_GetCenteredTextX(card_x, card_width, text, font_size);
+  }
 
   if (value_height > text_height)
   {
     text_y = (uint16_t)(value_y + ((value_height - text_height) / 2U));
   }
 
-  ILI9341_FillRectangle(widget->x, value_y, widget->width, value_height, ILI9341_COLOR_BLACK);
-  ILI9341_DrawString(text_x, text_y, text, UI_GetFieldColor(widget->field), ILI9341_COLOR_BLACK, font_size);
+  ILI9341_FillRectangle(card_x, value_y, card_width, value_height, background);
+  UI_DrawWidgetSeparators(widget, card_x, card_y, card_width, card_height);
+  if (widget->field == FIELD_GPS_RAW)
+  {
+    UI_DrawWrappedText((uint16_t)(card_x + UI_CARD_PADDING),
+                       value_y,
+                       (uint16_t)(card_width - (UI_CARD_PADDING * 2U)),
+                       value_height,
+                       text,
+                       value_color,
+                       background,
+                       1U);
+  }
+  else
+  {
+    ILI9341_DrawString(text_x, text_y, text, value_color, background, font_size);
+  }
 
   if (widget_index < UI_MAX_WIDGETS)
   {
@@ -360,7 +648,7 @@ void RenderPage(const Page_t *page)
   {
     current_rendered_page = page;
     UI_ClearValueCache();
-    ILI9341_FillScreen(ILI9341_COLOR_BLACK);
+    ILI9341_FillScreen(UI_SCREEN_BACKGROUND);
 
     for (uint8_t i = 0U; i < widget_count; i++)
     {
@@ -383,21 +671,28 @@ void UI_RenderCurrentPage(void)
       return;
     }
 
-    ILI9341_FillScreen(ILI9341_COLOR_BLACK);
-    ILI9341_DrawString(72U, 18U, "Menu", ILI9341_COLOR_WHITE, ILI9341_COLOR_BLACK, 3U);
+    ILI9341_FillScreen(UI_SCREEN_BACKGROUND);
+    ILI9341_DrawRectangle(8U, 8U, 224U, 304U, UI_BORDER_COLOR);
+    ILI9341_DrawString(82U, 22U, "MENU", UI_TEXT_COLOR, UI_SCREEN_BACKGROUND, 3U);
+    ILI9341_DrawLine(8, 62, 231, 62, UI_BORDER_COLOR);
 
     for (uint8_t i = 0U; i < UI_MENU_ITEM_COUNT; i++)
     {
-      uint16_t y = (uint16_t)(88U + (i * 44U));
-      uint16_t color = (i == menu_cursor) ? ILI9341_COLOR_YELLOW : ILI9341_COLOR_WHITE;
+      uint16_t y = (uint16_t)(92U + (i * 44U));
+      uint16_t color = (i == menu_cursor) ? UI_SELECTED_TEXT : UI_TEXT_COLOR;
+      uint16_t background = (i == menu_cursor) ? UI_SELECTED_BACKGROUND : UI_SCREEN_BACKGROUND;
 
-      ILI9341_DrawString(34U, y, (i == menu_cursor) ? ">" : " ", color, ILI9341_COLOR_BLACK, 2U);
-      ILI9341_DrawString(64U, y, menu_items[i], color, ILI9341_COLOR_BLACK, 2U);
+      if (i == menu_cursor)
+      {
+        ILI9341_FillRectangle(24U, (uint16_t)(y - 6U), 192U, 30U, UI_SELECTED_BACKGROUND);
+      }
+
+      ILI9341_DrawString(40U, y, menu_items[i], color, background, 2U);
     }
 
     if (system_info_visible != 0U)
     {
-      ILI9341_DrawString(24U, 278U, "BikeComputer v1.0", ILI9341_COLOR_GREEN, ILI9341_COLOR_BLACK, 2U);
+      ILI9341_DrawString(24U, 278U, "BikeComputer v1.0", UI_TEXT_COLOR, UI_SCREEN_BACKGROUND, 2U);
     }
 
     menu_dirty = 0U;
