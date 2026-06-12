@@ -39,6 +39,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define NRF_UART_PERIOD_MS      1000U
+#define NRF_UART_TX_TIMEOUT_MS  20U
+#define NRF_UART_BUFFER_SIZE    128U
 
 /* USER CODE END PD */
 
@@ -53,8 +56,10 @@ I2C_HandleTypeDef hi2c1;
 SPI_HandleTypeDef hspi1;
 
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+static uint32_t nrf_uart_last_tx_ms = 0U;
 
 /* USER CODE END PV */
 
@@ -64,12 +69,125 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
+static void NRF_UART_SendStartupMessage(void);
+static void NRF_UART_Update(void);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void NRF_UART_AppendChar(char *buffer, uint16_t buffer_size, uint16_t *index, char value)
+{
+  if (*index < (uint16_t)(buffer_size - 1U))
+  {
+    buffer[*index] = value;
+    (*index)++;
+    buffer[*index] = '\0';
+  }
+}
+
+static void NRF_UART_AppendText(char *buffer, uint16_t buffer_size, uint16_t *index, const char *text)
+{
+  while (*text != '\0')
+  {
+    NRF_UART_AppendChar(buffer, buffer_size, index, *text);
+    text++;
+  }
+}
+
+static void NRF_UART_AppendUnsigned(char *buffer, uint16_t buffer_size, uint16_t *index, uint32_t value)
+{
+  char digits[10];
+  uint8_t digit_count = 0U;
+
+  if (value == 0U)
+  {
+    NRF_UART_AppendChar(buffer, buffer_size, index, '0');
+    return;
+  }
+
+  while ((value > 0U) && (digit_count < sizeof(digits)))
+  {
+    digits[digit_count] = (char)('0' + (value % 10U));
+    value /= 10U;
+    digit_count++;
+  }
+
+  while (digit_count > 0U)
+  {
+    digit_count--;
+    NRF_UART_AppendChar(buffer, buffer_size, index, digits[digit_count]);
+  }
+}
+
+static void NRF_UART_AppendFloat1(char *buffer, uint16_t buffer_size, uint16_t *index, float value)
+{
+  uint32_t scaled;
+
+  if (value < 0.0f)
+  {
+    NRF_UART_AppendChar(buffer, buffer_size, index, '-');
+    value = -value;
+  }
+
+  scaled = (uint32_t)((value * 10.0f) + 0.5f);
+  NRF_UART_AppendUnsigned(buffer, buffer_size, index, scaled / 10U);
+  NRF_UART_AppendChar(buffer, buffer_size, index, '.');
+  NRF_UART_AppendUnsigned(buffer, buffer_size, index, scaled % 10U);
+}
+
+static void NRF_UART_SendText(const char *text)
+{
+  uint16_t length = 0U;
+
+  while (text[length] != '\0')
+  {
+    length++;
+  }
+
+  if (length > 0U)
+  {
+    (void)HAL_UART_Transmit(&huart2, (uint8_t *)text, length, NRF_UART_TX_TIMEOUT_MS);
+  }
+}
+
+static void NRF_UART_SendStartupMessage(void)
+{
+  NRF_UART_SendText("STM32 UART2 Ready\r\n");
+  NRF_UART_SendText("TX=PA2 RX=PA3 Baud=115200\r\n");
+  nrf_uart_last_tx_ms = HAL_GetTick();
+}
+
+static void NRF_UART_Update(void)
+{
+  char message[NRF_UART_BUFFER_SIZE];
+  uint16_t index = 0U;
+  uint32_t now = HAL_GetTick();
+
+  if ((now - nrf_uart_last_tx_ms) < NRF_UART_PERIOD_MS)
+  {
+    return;
+  }
+
+  nrf_uart_last_tx_ms = now;
+  message[0] = '\0';
+
+  NRF_UART_AppendText(message, sizeof(message), &index, "STM32 DATA speed=");
+  NRF_UART_AppendFloat1(message, sizeof(message), &index, BikeData.speed);
+  NRF_UART_AppendText(message, sizeof(message), &index, "km/h power=");
+  NRF_UART_AppendUnsigned(message, sizeof(message), &index, BikeData.power);
+  NRF_UART_AppendText(message, sizeof(message), &index, "W cadence=");
+  NRF_UART_AppendUnsigned(message, sizeof(message), &index, BikeData.cadence);
+  NRF_UART_AppendText(message, sizeof(message), &index, "rpm hr=");
+  NRF_UART_AppendUnsigned(message, sizeof(message), &index, BikeData.heartRate);
+  NRF_UART_AppendText(message, sizeof(message), &index, "bpm gpsFix=");
+  NRF_UART_AppendUnsigned(message, sizeof(message), &index, BikeData.gpsFix);
+  NRF_UART_AppendText(message, sizeof(message), &index, "\r\n");
+
+  NRF_UART_SendText(message);
+}
 
 /* USER CODE END 0 */
 
@@ -105,6 +223,7 @@ int main(void)
   MX_I2C1_Init();
   MX_SPI1_Init();
   MX_USART1_UART_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   BikeData_InitDemo();
   ILI9341_Init();
@@ -115,6 +234,7 @@ int main(void)
   RideStats_Init();
   UI_ForceRedraw();
   UI_RenderCurrentPage();
+  NRF_UART_SendStartupMessage();
 
   /* USER CODE END 2 */
 
@@ -166,6 +286,7 @@ int main(void)
     (void)BMP280_UpdateBikeData();
     GPS_Update();
     RideStats_Update();
+    NRF_UART_Update();
     UI_RenderCurrentPage();
   }
   /* USER CODE END 3 */
@@ -319,6 +440,39 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
 
 }
 
